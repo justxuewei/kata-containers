@@ -2030,10 +2030,17 @@ func LinkList() ([]Link, error) {
 func (h *Handle) LinkList() ([]Link, error) {
 	// NOTE(vish): This duplicates functionality in net/iface_linux.go, but we need
 	//             to get the message ourselves to parse link type.
+	// niuxuewei comments:
+	// proto 是 RTM_GETLINK，表示 从一个特定的网络接口上获得信息
+	// flags 是 NLM_F_DUMP (NLM_F_REQUEST | NLM_F_ROOT | NLM_F_MATCH)
+	// - NLF_F_ROOT: Return the complete table instead of a single entry.
+	// - NLM_F_MATCH: Return all entries matching criteria.
 	req := h.newNetlinkRequest(unix.RTM_GETLINK, unix.NLM_F_DUMP)
 
+	// AF_UNSPEC 表示 IPv4 和 IPv6 都返回
 	msg := nl.NewIfInfomsg(unix.AF_UNSPEC)
 	req.AddData(msg)
+
 	attr := nl.NewRtAttr(unix.IFLA_EXT_MASK, nl.Uint32Attr(nl.RTEXT_FILTER_VF))
 	req.AddData(attr)
 

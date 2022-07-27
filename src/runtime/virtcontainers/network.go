@@ -191,6 +191,7 @@ type DNSInfo struct {
 
 // NetworkConfig is the network configuration related to a network.
 type NetworkConfig struct {
+	// in Linux network, NetworkID is equivalent to the netns path
 	NetworkID         string
 	InterworkingModel NetInterworkingModel
 	NetworkCreated    bool

@@ -285,6 +285,7 @@ func (a *Uint32Attribute) Len() int {
 	return 8
 }
 
+// niuxuewei comments: RT == route, RTAttr 表示路由属性
 // Extend RtAttr to handle data and children
 type RtAttr struct {
 	unix.RtAttr
