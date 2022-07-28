@@ -76,6 +76,7 @@ var supportedQemuMachines = []govmmQemu.Machine{
 	},
 }
 
+// niuxuewei comments: 这个部分我理解是根据不同的 arch 创建 qemu 执行路径和设置
 func newQemuArch(config HypervisorConfig) (qemuArch, error) {
 	machineType := config.HypervisorMachineType
 	if machineType == "" {

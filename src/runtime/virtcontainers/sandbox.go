@@ -153,6 +153,8 @@ type SandboxConfig struct {
 
 	ShmSize uint64
 
+	// niuxuewei comments: VFIO 是一种 I/O 直通技术，
+	// refer to https://www.cnblogs.com/haiyonghao/p/14440944.html
 	VfioMode config.VFIOModeType
 
 	// SharePidNs sets all containers to share the same sandbox level pid namespace.
@@ -420,6 +422,8 @@ func (s *Sandbox) IOStream(containerID, processID string) (io.WriteCloser, io.Re
 	return c.ioStream(processID)
 }
 
+// niuxuewei comments:
+// 遍历 assets 并将其添加到 HypervisorConfig 中，具体的 assets 有多种暂时没看
 func createAssets(ctx context.Context, sandboxConfig *SandboxConfig) error {
 	span, _ := katatrace.Trace(ctx, nil, "createAssets", sandboxTracingTags, map[string]string{"sandbox_id": sandboxConfig.ID})
 	defer span.End()
@@ -514,6 +518,8 @@ func createSandbox(ctx context.Context, sandboxConfig SandboxConfig, factory Fac
 	return s, nil
 }
 
+// niuxuewei comments:
+// 创建一个 sandbox，包括创建一个 vm 以及初始化 agent
 func newSandbox(ctx context.Context, sandboxConfig SandboxConfig, factory Factory) (sb *Sandbox, retErr error) {
 	span, ctx := katatrace.Trace(ctx, nil, "newSandbox", sandboxTracingTags, map[string]string{"sandbox_id": sandboxConfig.ID})
 	defer span.End()
@@ -523,13 +529,16 @@ func newSandbox(ctx context.Context, sandboxConfig SandboxConfig, factory Factor
 	}
 
 	// create agent instance
+	// niuxuewei comments: 创建一个 kataAgent 实例
 	agent := getNewAgentFunc(ctx)()
 
+	// niuxuewei comments: 以 qemu 为例创建一个 qemu 实例
 	hypervisor, err := NewHypervisor(sandboxConfig.HypervisorType)
 	if err != nil {
 		return nil, err
 	}
-
+	
+	// 只是创建了一个 LinuxNetwork 实例，并没有做任何初始化的工作
 	network, err := NewNetwork(&sandboxConfig.NetworkConfig)
 	if err != nil {
 		return nil, err

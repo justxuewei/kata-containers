@@ -824,6 +824,7 @@ func CPUFlags(cpuInfoPath string) (map[string]bool, error) {
 }
 
 // RunningOnVMM checks if the system is running inside a VM.
+// niuxuewei comments: 判断是否是运行在 vm 内（nested vm）
 func RunningOnVMM(cpuInfoPath string) (bool, error) {
 	if runtime.GOARCH == "amd64" {
 		flags, err := CPUFlags(cpuInfoPath)
