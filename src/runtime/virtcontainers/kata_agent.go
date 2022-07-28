@@ -387,6 +387,8 @@ func (k *kataAgent) internalConfigure(ctx context.Context, h Hypervisor, id stri
 	defer span.End()
 
 	var err error
+	// niuxuewei comments:
+	// vmSocket 是 vhost + contextID + port(1024)
 	if k.vmSocket, err = h.GenerateSocket(id); err != nil {
 		return err
 	}
@@ -397,6 +399,7 @@ func (k *kataAgent) internalConfigure(ctx context.Context, h Hypervisor, id stri
 	return nil
 }
 
+// niuxuewei comments: 尝试创建一个 VSock 设备
 func (k *kataAgent) configure(ctx context.Context, h Hypervisor, id, sharePath string, config KataAgentConfig) error {
 	span, ctx := katatrace.Trace(ctx, k.Logger(), "configure", kataAgentTracingTags)
 	defer span.End()
@@ -446,6 +449,7 @@ func (k *kataAgent) configureFromGrpc(ctx context.Context, h Hypervisor, id stri
 	return k.internalConfigure(ctx, h, id, config)
 }
 
+// niuxuewei comments: 调用 kataAgent::configure 创建一个 vsock 设备
 func (k *kataAgent) createSandbox(ctx context.Context, sandbox *Sandbox) error {
 	span, ctx := katatrace.Trace(ctx, k.Logger(), "createSandbox", kataAgentTracingTags)
 	defer span.End()
@@ -702,6 +706,8 @@ func (k *kataAgent) getDNS(sandbox *Sandbox) ([]string, error) {
 	return nil, nil
 }
 
+// niuxuewei comments: 做一些创建 vm 之后的初始化工作，比如设置 agent url、更新
+// 网络、检查 agent 是否正常运行等前置性工作。
 func (k *kataAgent) startSandbox(ctx context.Context, sandbox *Sandbox) error {
 	span, ctx := katatrace.Trace(ctx, k.Logger(), "StartVM", kataAgentTracingTags)
 	defer span.End()

@@ -828,6 +828,7 @@ func (s *Sandbox) Delete(ctx context.Context) error {
 	return s.store.Destroy(s.id)
 }
 
+// niuxuewei comments: 创建 vm 网络，主要的行为是扫描 netns 空间下的全部虚拟设备
 func (s *Sandbox) createNetwork(ctx context.Context) error {
 	if s.config.NetworkConfig.DisableNewNetwork ||
 		s.config.NetworkConfig.NetworkID == "" {
@@ -852,6 +853,7 @@ func (s *Sandbox) createNetwork(ctx context.Context) error {
 	return nil
 }
 
+// niuxuewei comments: 遍历 eps 列表，将 np.netPair.VhostFds 全部关闭
 func (s *Sandbox) postCreatedNetwork(ctx context.Context) error {
 	if s.factory != nil {
 		return nil
@@ -1212,6 +1214,8 @@ func (s *Sandbox) startVM(ctx context.Context) (err error) {
 	}()
 
 	if err := s.network.Run(ctx, func() error {
+		// niuxuewei comments: 如果 factory 不为空的话，则使用 factory 的
+		// GetVM，这块可以暂略
 		if s.factory != nil {
 			vm, err := s.factory.GetVM(ctx, VMConfig{
 				HypervisorType:   s.config.HypervisorType,

@@ -48,6 +48,8 @@ func Ioctl(fd uintptr, request, data uintptr) error {
 // - Reduce the probability of a *DoS attack*, since other processes don't know whatis the initial context ID
 //   used by findContextID to find a context ID available
 //
+// niuxuewei comments:
+// 从 3 - math.MaxUint64 中找一个没有使用的 ID 作为 contextID
 func FindContextID() (*os.File, uint64, error) {
 	// context IDs 0x0, 0x1 and 0x2 are reserved, 0x3 is the first context ID usable.
 	var firstContextID uint64 = 0x3

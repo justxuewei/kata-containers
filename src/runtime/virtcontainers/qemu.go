@@ -811,6 +811,7 @@ func (q *qemu) setupVirtioMem(ctx context.Context) error {
 }
 
 // StartVM will start the Sandbox's VM.
+// niuxuewei comments: 在这里启动了 VM
 func (q *qemu) StartVM(ctx context.Context, timeout int) error {
 	span, ctx := katatrace.Trace(ctx, q.Logger(), "StartVM", qemuTracingTags, map[string]string{"sandbox_id": q.id})
 	defer span.End()

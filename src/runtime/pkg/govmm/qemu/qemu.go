@@ -45,6 +45,7 @@ const (
 )
 
 // Device is the qemu device interface.
+// niuxuewei comments: 所有的 device 最终都会转换为 qemu 的一个或几个参数
 type Device interface {
 	Valid() bool
 	QemuParams(config *Config) []string

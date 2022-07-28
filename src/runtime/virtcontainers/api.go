@@ -88,6 +88,7 @@ func createSandboxFromConfig(ctx context.Context, sandboxConfig SandboxConfig, f
 	}
 
 	// Start the VM
+	// niuxuewei comments: 真正的启动 vm
 	if err = s.startVM(ctx); err != nil {
 		return nil, err
 	}
