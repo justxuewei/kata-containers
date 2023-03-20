@@ -90,6 +90,7 @@ impl DragonballInner {
         }
     }
 
+    // Xuewei: 这里真正的启动了 VM
     pub(crate) async fn cold_start_vm(&mut self, timeout: i32) -> Result<()> {
         info!(sl!(), "start sandbox cold");
 
@@ -147,6 +148,7 @@ impl DragonballInner {
         Ok(())
     }
 
+    // Xuewei: 做一些数据的初始化工作，启动了一个 VmmService 服务
     pub(crate) fn run_vmm_server(&mut self) -> Result<()> {
         if !self.config.jailer_path.is_empty() {
             self.jailed = true;

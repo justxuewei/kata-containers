@@ -205,6 +205,7 @@ pub struct VmmService {
 
 impl VmmService {
     /// Create a new VMM API server instance.
+    // Xuewei: 创建一个 VmmService，只初始化了结构体，没有其他操作。
     pub fn new(from_api: Receiver<VmmRequest>, to_api: Sender<VmmResponse>) -> Self {
         VmmService {
             from_api,
@@ -236,6 +237,7 @@ impl VmmService {
             VmmAction::GetVmConfiguration => Ok(VmmData::MachineConfiguration(Box::new(
                 self.machine_config.clone(),
             ))),
+            // Xuewei: 设置 VM 配置
             VmmAction::SetVmConfiguration(machine_config) => {
                 self.set_vm_configuration(vmm, machine_config)
             }
@@ -327,6 +329,7 @@ impl VmmService {
         Ok(VmmData::Empty)
     }
 
+    // Xuewei: 启动 VM
     fn start_microvm(&mut self, vmm: &mut Vmm, event_mgr: &mut EventManager) -> VmmRequestResult {
         use self::StartMicroVmError::MicroVMAlreadyRunning;
         use self::VmmActionError::StartMicroVm;

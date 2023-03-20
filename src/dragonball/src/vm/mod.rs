@@ -169,6 +169,10 @@ impl Default for VmConfigInfo {
 ///  |           ^---1:1-> Resource Manager
 ///  |           ^---1:N-> Vcpu
 ///  |---<-1:N-> Event Manager
+
+// Xuewei: Vm 和 Vmm 的区别是什么？
+// Vm 持有虚拟机的资源，如果 Vm 被释放，则资源被释放。
+// 上面的图介绍了 Vmm 和 Vm 之间的关系。
 pub struct Vm {
     epoll_manager: EpollManager,
     kvm: KvmContext,
@@ -183,6 +187,7 @@ pub struct Vm {
     resource_manager: Arc<ResourceManager>,
     vcpu_manager: Option<Arc<Mutex<VcpuManager>>>,
     vm_config: VmConfigInfo,
+    // Xuewei: vm_fd 是通过 /dev/kvm 创建的虚拟机
     vm_fd: Arc<VmFd>,
 
     start_instance_request_ts: u64,
@@ -519,6 +524,7 @@ impl Vm {
         Box::new(DmesgWriter::new(&self.logger))
     }
 
+    // Xuewei: 初始化 guest 内存
     pub(crate) fn init_guest_memory(&mut self) -> std::result::Result<(), StartMicroVmError> {
         info!(self.logger, "VM: initializing guest memory...");
         // We are not allowing reinitialization of vm guest memory.
@@ -527,8 +533,10 @@ impl Vm {
         }
 
         // vcpu boot up require local memory. reserve 100 MiB memory
+        // Xuewei: 默认值 128mib
         let mem_size = (self.vm_config.mem_size_mib as u64) << 20;
 
+        // Xuewei: 默认值是 shmem
         let mem_type = self.vm_config.mem_type.clone();
         let mut mem_file_path = String::from("");
         if mem_type == "hugetlbfs" {
@@ -539,6 +547,7 @@ impl Vm {
             mem_file_path.push_str(shared_info.id.as_str());
         }
 
+        // Xuewei: vCPU 的 id 是从 0 开始分配的
         let mut vcpu_ids: Vec<u32> = Vec::new();
         for i in 0..self.vm_config().max_vcpu_count {
             vcpu_ids.push(i as u32);

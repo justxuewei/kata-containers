@@ -62,6 +62,7 @@ struct ResourceManagerBuilder {
     // IntervalTree for allocating memory-mapped io (MMIO) address.
     mmio_pool: IntervalTree<()>,
     // IntervalTree for allocating guest memory.
+    // Xuewei: mem_pool 在初始化阶段会将 guest 内存范围插入
     mem_pool: IntervalTree<()>,
     // IntervalTree for allocating kvm memory slot.
     kvm_mem_slot_pool: IntervalTree<()>,
@@ -130,12 +131,14 @@ impl ResourceManagerBuilder {
     /// MMIO_LOW_END in the future.
     #[allow(clippy::absurd_extreme_comparisons)]
     pub(crate) fn init_mem_pool_helper(mem: &mut IntervalTree<()>) {
+        // Xuewei: 只要 guest 内存区域与 MMIO 区域不重合，或者 MMIO 区域的长度为 0
         if *GUEST_MEM_END < MMIO_LOW_START
             || GUEST_MEM_START > MMIO_LOW_END
             || MMIO_LOW_START == MMIO_LOW_END
         {
             mem.insert(Range::new(GUEST_MEM_START, *GUEST_MEM_END), None);
         } else {
+            // Xuewei: 如果有重叠则会截断
             if MMIO_LOW_START > GUEST_MEM_START {
                 mem.insert(Range::new(GUEST_MEM_START, MMIO_LOW_START - 1), None);
             }

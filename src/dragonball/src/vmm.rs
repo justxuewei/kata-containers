@@ -52,6 +52,7 @@ impl Vmm {
         vcpu_seccomp_filter: BpfProgram,
         kvm_fd: Option<RawFd>,
     ) -> Result<Self> {
+        // Xuewei: EpollManager 是 EventManager 的多线程封装版
         let epoll_manager = EpollManager::default();
         Self::new_with_epoll_manager(
             api_shared_info,
@@ -112,6 +113,9 @@ impl Vmm {
     /// * `service` - VMM Service provider.
     pub fn run_vmm_event_loop(vmm: Arc<Mutex<Vmm>>, mut service: VmmService) -> i32 {
         let epoll_mgr = vmm.lock().unwrap().epoll_manager.clone();
+        // Xuewei: 为 vmm 创建了一个 EventManager，这个 EventManager 是
+        // Dragonball 自建的。
+        // Question: 为什么这里要用 eventfd 而不使用 channel 内置的阻塞机制？
         let mut event_mgr =
             EventManager::new(&vmm, epoll_mgr).expect("Cannot create epoll manager");
 

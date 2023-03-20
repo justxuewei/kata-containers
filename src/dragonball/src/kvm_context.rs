@@ -24,7 +24,10 @@ pub struct KvmContext {
 
 impl KvmContext {
     /// Create a new KVM context object, using the provided `kvm_fd` if one is presented.
+    // Xuewei: 这个方法返回了一个 KVM 上下文，检查了一些 KVM 能力，并没有什么实
+    // 质性的初始化操作。
     pub fn new(kvm_fd: Option<RawFd>) -> Result<Self> {
+        // Xuewei: 这个 kvm 是指 "/dev/kvm" 对应的 fd
         let kvm = if let Some(fd) = kvm_fd {
             // Safe because we expect kvm_fd to contain a valid fd number when is_some() == true.
             unsafe { Kvm::from_raw_fd(fd) }
@@ -45,6 +48,7 @@ impl KvmContext {
 
         #[cfg(target_arch = "x86_64")]
         let supported_msrs = dbs_arch::msr::supported_guest_msrs(&kvm).map_err(Error::GuestMSRs)?;
+        // Xuewei: 检查虚拟机支持的最大插槽数
         let max_memslots = kvm.get_nr_memslots();
 
         Ok(KvmContext {

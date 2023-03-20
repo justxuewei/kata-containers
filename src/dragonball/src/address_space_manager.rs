@@ -164,6 +164,8 @@ pub struct AddressSpaceMgrBuilder<'a> {
 
 impl<'a> AddressSpaceMgrBuilder<'a> {
     /// Create a new [`AddressSpaceMgrBuilder`] object.
+    /// Xuewei: 这个 new 方法就只是检查了 mem_type 是否符合预期，没有其他更多操
+    /// 作了。
     pub fn new(mem_type: &'a str, mem_file: &'a str) -> Result<Self> {
         if mem_type.is_empty() {
             return Err(AddressManagerError::TypeInvalid(mem_type.to_string()));
@@ -172,6 +174,7 @@ impl<'a> AddressSpaceMgrBuilder<'a> {
             mem_type,
             mem_file,
             mem_index: 0,
+            // Xuewei: 只有在 hugetlbfs 启动的时候才被置为 true
             mem_suffix: true,
             mem_prealloc: false,
             dirty_page_logging: false,
@@ -259,6 +262,7 @@ impl AddressSpaceMgr {
     ///
     /// This method is designed to be called when starting up a virtual machine instead of at
     /// runtime, so it's expected the virtual machine will be tore down and no strict error recover.
+    /// Xuewei: 看这个函数了解内存是如何被创建的
     pub fn create_address_space(
         &mut self,
         res_mgr: &ResourceManager,
@@ -269,11 +273,14 @@ impl AddressSpaceMgr {
         let mut start_addr = dbs_boot::layout::GUEST_MEM_START;
 
         // Create address space regions.
+        // Xuewei: 为每一个 numa 初始化内存，这里只会计算出需要添加哪些
+        // regions，并不会物理地添加。
         for info in numa_region_infos.iter() {
             info!("numa_region_info {:?}", info);
             // convert size_in_mib to bytes
             let size = info
                 .size
+                // Xuewei: 左移 20 位，将 mib 转换为 bytes，并检查是否溢出
                 .checked_shl(20)
                 .ok_or(AddressManagerError::InvalidOperation)?;
 
@@ -282,12 +289,15 @@ impl AddressSpaceMgr {
             if start_addr > dbs_boot::layout::MMIO_LOW_END
                 || start_addr + size <= dbs_boot::layout::MMIO_LOW_START
             {
+                // Xavier: 该分支表示 guest 内存与 MIMO 没有交叉
+                // Xavier: 那就以 start_addr 为开始，创建一个 size 大小的内存区域
                 let region = self.create_region(start_addr, size, info, &mut param)?;
                 regions.push(region);
                 start_addr = start_addr
                     .checked_add(size)
                     .ok_or(AddressManagerError::InvalidOperation)?;
             } else {
+                // Xuewei: 如果重叠了就执行区域切分
                 // Add guest memory below the MMIO hole, avoid splitting the memory region
                 // if the available address region is small than MINIMAL_SPLIT_SPACE MiB.
                 let mut below_size = dbs_boot::layout::MMIO_LOW_START
@@ -314,6 +324,7 @@ impl AddressSpaceMgr {
         }
 
         // Create GuestMemory object
+        // Xuewei: 这里是利用上面计算出的 regions，物理地分配内存
         let mut vm_memory = GuestMemoryMmap::new();
         for reg in regions.iter() {
             // Allocate used guest memory addresses.
@@ -352,6 +363,7 @@ impl AddressSpaceMgr {
     }
 
     // size unit: Byte
+    // Xuewei: 创建内存 & 添加到 NUMA nodes 中
     fn create_region(
         &mut self,
         start_addr: u64,
@@ -360,6 +372,8 @@ impl AddressSpaceMgr {
         param: &mut AddressSpaceMgrBuilder,
     ) -> Result<Arc<AddressSpaceRegion>> {
         let mem_file_path = param.get_next_mem_file();
+        // Xuewei: 最终调用的是 AddressSpaceRegion::create_memory_region()，创建
+        // 了一个长度为 size_bytes 的共享内存
         let region = AddressSpaceRegion::create_default_memory_region(
             GuestAddress(start_addr),
             size_bytes,
@@ -372,6 +386,7 @@ impl AddressSpaceMgr {
         .map_err(AddressManagerError::CreateAddressSpaceRegion)?;
         let region = Arc::new(region);
 
+        // Xuewei: 把内存添加到 NUMA 对应的 vCPU 中
         self.insert_into_numa_nodes(
             &region,
             info.guest_numa_node_id.unwrap_or(0),

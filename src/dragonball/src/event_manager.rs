@@ -98,6 +98,7 @@ impl EventManager {
             .map_err(EpollError::EpollMgr)
     }
 
+    // Xuewei: 我理解这应该类似于执行 epoll_wait 阻塞等待 eventfd
     /// Poll pending events and invoke registered event handler.
     ///
     /// # Arguments:
@@ -114,12 +115,19 @@ impl EventManager {
     }
 }
 
+// Xuewei: VmmEpollHandler 是一个 EventFd 的 subscriber，具体内容详见
+// https://github.com/rust-vmm/event-manager。
 struct VmmEpollHandler {
     vmm: Arc<Mutex<Vmm>>,
     vmm_event_count: Arc<AtomicUsize>,
 }
 
 impl MutEventSubscriber for VmmEpollHandler {
+    // Xuewei: 当 eventfd 被触发的时候，根据 events.data() 判断 eventfd 的类型：
+    // - EPOLL_EVENT_API_REQUEST: 计数器 +1，同时 event_ctx 的
+    //   api_event_triggered 置 true。
+    // - EPOLL_EVENT_EXIT: 计数器 +1，同时 event_ctx 的
+    //   exit_evt_triggered 置 true。
     fn process(&mut self, events: Events, _ops: &mut EventOps) {
         // Do not try to recover when the lock has already been poisoned.
         // And be careful to avoid deadlock between process() and vmm::vmm_thread_event_loop().

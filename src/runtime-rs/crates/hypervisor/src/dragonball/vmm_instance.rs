@@ -43,12 +43,16 @@ pub struct VmmInstance {
     vmm_shared_info: Arc<RwLock<InstanceInfo>>,
     to_vmm: Option<Sender<VmmRequest>>,
     from_vmm: Option<Receiver<VmmResponse>>,
+    // Xuewei: 是一个 eventfd，具体作用不明，在 VmmInstance::new() 中初始化的。
     to_vmm_fd: EventFd,
     seccomp: BpfProgram,
     vmm_thread: Option<thread::JoinHandle<Result<i32>>>,
 }
 
 impl VmmInstance {
+    // Xuewei: 创建一个 VmmInstance，VmmInstance 的作用是管理 vmm，这里
+    // 面存了一些与 vmm 有关的信息，比如 vmm 的状态、eventfd 等。
+    // 初始化时机：在 DragonballInner 初始化的时候 VmmInstance 被初始化。
     pub fn new(id: &str) -> Self {
         let vmm_shared_info = Arc::new(RwLock::new(InstanceInfo::new(
             String::from(id),
@@ -84,6 +88,7 @@ impl VmmInstance {
     }
 
     pub fn run_vmm_server(&mut self, id: &str, netns: Option<String>) -> Result<()> {
+        // Xuewei: 打开 /dev/kvm 设备
         let kvm = OpenOptions::new().read(true).write(true).open(KVM_DEVICE)?;
 
         let (to_vmm, from_runtime) = channel();
@@ -91,12 +96,17 @@ impl VmmInstance {
 
         self.set_instance_id(id);
 
+        // Xuewei: 
+        // - from_runtime 是指 runtime 发给 vmm 的信息。
+        // - to_runtime 是指 vmm 发给 runtime 的信息。
         let vmm_service = VmmService::new(from_runtime, to_runtime);
 
         self.to_vmm = Some(to_vmm);
         self.from_vmm = Some(from_vmm);
 
         let api_event_fd2 = self.to_vmm_fd.try_clone().expect("Failed to dup eventfd");
+        // Xuewei: 调用 dragonball vmm 的创建方法，这里是真正的创建一个 vmm，与
+        // VmmInstance 形成对比，可以感受一下。
         let vmm = Vmm::new(
             self.vmm_shared_info.clone(),
             api_event_fd2,

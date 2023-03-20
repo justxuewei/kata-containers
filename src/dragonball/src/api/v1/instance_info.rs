@@ -40,6 +40,7 @@ pub enum AsyncState {
 }
 
 /// The strongly typed that contains general information about the microVM.
+// Xuewei: InstanceInfo 包括了 VM 的一些基本信息，比如 pid、
 #[derive(Debug, Deserialize, Serialize)]
 pub struct InstanceInfo {
     /// The ID of the microVM.
