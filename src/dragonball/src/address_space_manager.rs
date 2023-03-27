@@ -335,6 +335,7 @@ impl AddressSpaceMgr {
             let _key = res_mgr
                 .allocate_mem_address(&constraint)
                 .ok_or(AddressManagerError::NoAvailableMemAddress)?;
+            // Xuewei: 将 reg 转换为了真实的内存映射
             let mmap_reg = self.create_mmap_region(reg.clone())?;
 
             vm_memory = vm_memory
@@ -447,6 +448,8 @@ impl AddressSpaceMgr {
     }
 
     /// Mmap the address space region into current process.
+    /// Xuewei: 什么是 current process？
+    /// 总结来看这里将传入的 region 通过调用 mmap() 建立了内存映射。
     pub fn create_mmap_region(
         &mut self,
         region: Arc<AddressSpaceRegion>,
@@ -465,6 +468,7 @@ impl AddressSpaceMgr {
 
         // The GuestRegionMmap/MmapRegion will take ownership of the FileOffset object,
         // so we have to duplicate the fd here. It's really a dirty design.
+        // Xuewei: 为了解决 Rust 所有权问题而复制 fd 的
         let file_offset = match region.file_offset().as_ref() {
             Some(fo) => {
                 let fd = dup(fo.file().as_raw_fd()).map_err(AddressManagerError::DupFd)?;
@@ -485,6 +489,7 @@ impl AddressSpaceMgr {
         } else {
             region.perm_flags()
         };
+        // Xuewei: 调用 mmap() 并返回一个 MmapRegion 实例，创建了一个
         let mmap_reg = MmapRegion::build(
             file_offset,
             region.len() as usize,

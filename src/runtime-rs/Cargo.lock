@@ -584,11 +584,10 @@ dependencies = [
 
 [[package]]
 name = "dbs-address-space"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6bcc37dc0b8ffae1c5911d13ae630dc7a9020fa0de0edd178d6ab71daf56c8fc"
+version = "0.3.0"
 dependencies = [
  "arc-swap",
+ "lazy_static",
  "libc",
  "nix 0.23.1",
  "thiserror",
@@ -598,9 +597,7 @@ dependencies = [
 
 [[package]]
 name = "dbs-allocator"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92a384ac9bd9c22c486c7a66e68cdc6cd504da7793b69bd891f3d85070c999b6"
+version = "0.1.1"
 dependencies = [
  "thiserror",
 ]
