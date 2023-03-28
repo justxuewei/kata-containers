@@ -201,6 +201,7 @@ impl<'a> AddressSpaceMgrBuilder<'a> {
     }
 
     /// Set KVM [`VmFd`] handle to configure memory slots.
+    /// Xuewei: vmfd 表示的是已经打开的虚拟机 fd
     pub fn set_kvm_vm_fd(&mut self, vmfd: Arc<VmFd>) -> Option<Arc<VmFd>> {
         let mut existing_vmfd = None;
         if self.vmfd.is_some() {
@@ -325,6 +326,8 @@ impl AddressSpaceMgr {
 
         // Create GuestMemory object
         // Xuewei: 这里是利用上面计算出的 regions，物理地分配内存
+        // 这里的每一个 region 表示一个 guest 地址范围，region.start() 可以理解
+        // 为一个 guest 地址的起始范围。
         let mut vm_memory = GuestMemoryMmap::new();
         for reg in regions.iter() {
             // Allocate used guest memory addresses.
@@ -411,16 +414,21 @@ impl AddressSpaceMgr {
         mmap_reg: Arc<GuestRegionImpl>,
     ) -> Result<()> {
         // Build mapping between GPA <-> HVA, by adding kvm memory slot.
+        // Xuewei: 申请一个 kvm 内存槽
         let slot = res_mgr
             .allocate_kvm_mem_slot(1, None)
             .ok_or(AddressManagerError::NoAvailableKvmSlot)?;
 
+        // Xuewei: 如果虚拟机对应的 fd 存在
         if let Some(vmfd) = param.vmfd.as_ref() {
+            // Xuewei: GuestRegionMmap.mapping.as_ptr()，所以可以理解为 Mmap 是
+            // dragonball 的一块区域。
             let host_addr = mmap_reg
                 .get_host_address(MemoryRegionAddress(0))
                 .map_err(|_e| AddressManagerError::InvalidOperation)?;
             let flags = 0u32;
 
+            // Xuewei: 以下开始操作 kvm 并映射内存
             let mem_region = kvm_userspace_memory_region {
                 slot,
                 guest_phys_addr: reg.start_addr().raw_value(),

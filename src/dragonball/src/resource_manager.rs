@@ -399,6 +399,7 @@ impl ResourceManager {
     /// Allocate a kvm memory slot number.
     ///
     /// Allocate the specified slot if `fixed` contains a slot number.
+    /// Xuewei: 这段函数是在 kvm_mem_slot_pool 中申请一个内存槽
     pub fn allocate_kvm_mem_slot(&self, size: u32, fixed: Option<u32>) -> Option<u32> {
         let mut constraint = Constraint::new(size);
         if let Some(v) = fixed {
