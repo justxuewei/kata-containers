@@ -167,6 +167,9 @@ pub struct DeviceManagerTx {
 }
 
 impl DeviceManagerTx {
+    // Xuewei: 简单的创建一个 DeviceManagerTx，在创建的时候会获取
+    // DeviceManagerContext 的锁，也就是必须要等待 drop 当前的实例后，其他的线程
+    // 才能访问 DeviceManagerContext。
     fn new(mgr_ctx: &DeviceManagerContext) -> Self {
         // Do not expect poisoned lock.
         let guard = mgr_ctx.io_lock.lock().unwrap();
@@ -175,6 +178,7 @@ impl DeviceManagerTx {
         // So we play a tricky here that we hold a reference to the Arc<Mutex<()>> and transmute
         // the MutexGuard<'a, ()> to MutexGuard<'static, ()>.
         // It's safe because we hold a reference to the Mutex lock.
+        // Xuewei: 这里把 guard 的生命周期从默认转换为了永久（'static）。
         let guard =
             unsafe { std::mem::transmute::<MutexGuard<'_, ()>, MutexGuard<'static, ()>>(guard) };
 
@@ -206,14 +210,17 @@ impl DeviceManagerContext {
 impl IoManagerContext for DeviceManagerContext {
     type Context = DeviceManagerTx;
 
+    // Xuewei: 这里是简单的创建了一个 DeviceManagerTx，并返回。
     fn begin_tx(&self) -> Self::Context {
         DeviceManagerTx::new(self)
     }
 
+    // Xuewei: 传入外部修改后的 DeviceManagerTx，然后存储到自己的 io_manager 中。
     fn commit_tx(&self, context: Self::Context) {
         self.io_manager.store(Arc::new(context.io_manager));
     }
 
+    // Xuewei: 这里应该是会释放 DeviceManagerContext 的锁。
     fn cancel_tx(&self, context: Self::Context) {
         drop(context);
     }
@@ -968,6 +975,7 @@ impl DeviceManager {
     }
 
     /// Deregister a Virtio MMIO device from IoManager
+    /// Xuewei: 反注册 io_manager 中的设备
     pub fn deregister_mmio_virtio_device(
         device: &Arc<dyn DeviceIo>,
         ctx: &mut DeviceOpContext,

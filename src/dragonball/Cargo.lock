@@ -228,13 +228,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dbs-allocator"
-version = "0.1.1"
-dependencies = [
- "thiserror",
-]
-
-[[package]]
 name = "dbs-arch"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -411,7 +404,6 @@ dependencies = [
  "arc-swap",
  "bytes",
  "dbs-address-space",
- "dbs-allocator",
  "dbs-arch",
  "dbs-boot",
  "dbs-device",
