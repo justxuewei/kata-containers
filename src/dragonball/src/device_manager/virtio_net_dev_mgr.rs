@@ -208,6 +208,8 @@ impl ConfigItem for VirtioNetDeviceConfigInfo {
 pub type VirtioNetDeviceInfo = DeviceConfigInfo<VirtioNetDeviceConfigInfo>;
 
 /// Device manager to manage all virtio net devices.
+/// Xuewei: 我暂时可以理解为 VirtioNetDeviceMgr 保存了所有需要添加到 VM 的
+/// vritio-net 信息。
 pub struct VirtioNetDeviceMgr {
     pub(crate) info_list: DeviceConfigInfos<VirtioNetDeviceConfigInfo>,
     pub(crate) use_shared_irq: bool,
@@ -222,6 +224,8 @@ impl VirtioNetDeviceMgr {
     }
 
     /// Insert or update a virtio net device into the manager.
+    /// Xuewei: 这里是通过 API service 对应的 VmmAction 添加设备的。
+    /// 这里好像是以 hot plug 的方式添加的。
     pub fn insert_device(
         device_mgr: &mut DeviceManager,
         mut ctx: DeviceOpContext,
@@ -321,6 +325,8 @@ impl VirtioNetDeviceMgr {
     }
 
     /// Attach all configured net device to the virtual machine instance.
+    /// Xuewei: 这里好像是在 VM 启动的时候 attach devices，不算 hot plug，这个应
+    /// 该是与 insert_device() 的区别。
     pub fn attach_devices(
         &mut self,
         ctx: &mut DeviceOpContext,
@@ -334,8 +340,10 @@ impl VirtioNetDeviceMgr {
                 "host_dev_name" => &info.config.host_dev_name,
             );
 
+            // Xuewei: 根据配置创建 device
             let device = Self::create_device(&info.config, ctx)
                 .map_err(VirtioNetDeviceError::CreateNetDevice)?;
+            // Xuewei: 注册 mmio virtio 设备
             let device = DeviceManager::create_mmio_virtio_device(
                 device,
                 ctx,

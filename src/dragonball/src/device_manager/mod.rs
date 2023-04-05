@@ -518,6 +518,7 @@ impl DeviceManager {
             vsock_manager: VsockDeviceMgr::default(),
             #[cfg(feature = "virtio-blk")]
             block_manager: BlockDeviceMgr::default(),
+            // Xuewei: 创建了一个 virtio net 的设备管理，但是默认是没有设备的
             #[cfg(feature = "virtio-net")]
             virtio_net_manager: VirtioNetDeviceMgr::default(),
             #[cfg(feature = "virtio-fs")]

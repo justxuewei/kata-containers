@@ -166,6 +166,8 @@ impl Vm {
     /// 4) create and initialize vCPUs.
     /// 5) configure CPU power management features.
     /// 6) load guest kernel image.
+    /// Xuewei: 初始化 VM
+    /// 1. 初始化了各种设备
     pub fn init_microvm(
         &mut self,
         epoll_mgr: EpollManager,
@@ -179,6 +181,7 @@ impl Vm {
         // while on aarch64 we need to do it the other way around.
         self.setup_interrupt_controller()?;
         self.create_pit()?;
+        // Xuewei: 初始化了各种设备
         self.init_devices(epoll_mgr)?;
 
         let reset_event_fd = self.device_manager.get_reset_eventfd().unwrap();

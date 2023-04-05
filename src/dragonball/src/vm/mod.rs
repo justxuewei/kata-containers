@@ -215,6 +215,7 @@ impl Vm {
         let kvm = KvmContext::new(kvm_fd)?;
         let vm_fd = Arc::new(kvm.create_vm()?);
         let resource_manager = Arc::new(ResourceManager::new(Some(kvm.max_memslots())));
+        // Xuewei: 创建了一个 device manager
         let device_manager = DeviceManager::new(
             vm_fd.clone(),
             resource_manager.clone(),
@@ -469,6 +470,8 @@ impl Vm {
                 .ok_or(StartMicroVmError::AddressManagerError(
                     AddressManagerError::GuestMemoryNotInitialized,
                 ))?;
+        // Xuewei: 创建 devices
+        // 创建了那些 devices？？
         self.device_manager.create_devices(
             vm_as.clone(),
             epoll_manager,
@@ -689,6 +692,7 @@ impl Vm {
     ///
     /// This is the main entrance of the Vm object, to bring up the virtual machine instance into
     /// running state.
+    /// Xuewei: 启动一个 VMM
     pub fn start_microvm(
         &mut self,
         event_mgr: &mut EventManager,
