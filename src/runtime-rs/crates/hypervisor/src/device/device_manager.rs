@@ -449,6 +449,7 @@ pub async fn do_handle_device(
     d: &RwLock<DeviceManager>,
     dev_info: &DeviceConfig,
 ) -> Result<DeviceType> {
+    // 尝试创建了一个设备
     let device_id = d
         .write()
         .await

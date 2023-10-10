@@ -43,6 +43,7 @@ type Result<T> = std::result::Result<T, Error>;
 pub enum ConnState {
     /// The connection has been initiated by the host end, but is yet to be
     /// confirmed by the guest.
+    /// 等待 guest 确认
     LocalInit,
     /// The connection has been initiated by the guest, but we are yet to
     /// confirm it, by sending a response packet (VSOCK_OP_RESPONSE).
@@ -67,6 +68,7 @@ pub enum ConnState {
 /// For instance, after being notified that there is available data to be read
 /// from the host stream (via `notify()`), the connection will store a
 /// `PendingRx::Rw` to be later inspected by `recv_pkt()`.
+/// 参见 https://elixir.bootlin.com/linux/latest/source/include/uapi/linux/virtio_vsock.h
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum PendingRx {
     /// We need to yield a connection request packet (VSOCK_OP_REQUEST).
@@ -77,6 +79,7 @@ enum PendingRx {
     Rst = 2,
     /// We need to yield a data packet (VSOCK_OP_RW), by reading from the
     /// AF_UNIX socket.
+    /// "To send payload"，发送数据
     Rw = 3,
     /// We need to yield a credit update packet (VSOCK_OP_CREDIT_UPDATE).
     CreditUpdate = 4,

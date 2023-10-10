@@ -101,6 +101,7 @@ impl<AS: GuestAddressSpace, M: VsockGenericMuxer> Vsock<AS, M> {
 
     /// add backend for vsock muxer
     // NOTE: Backend is not allowed to add when vsock device is activated.
+    // vsock_device_msg 的 attach() 会调用这个方法，为 muxer 添加不同的 backend。
     pub fn add_backend(&mut self, backend: Box<dyn VsockBackend>, is_default: bool) -> Result<()> {
         if let Some(muxer) = self.muxer.as_mut() {
             muxer

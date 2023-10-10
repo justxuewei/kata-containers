@@ -93,6 +93,7 @@ where
 
     /// Walk the driver-provided RX queue buffers and attempt to fill them up
     /// with any data that we have pending.
+    /// RX（接收）是对于 driver 说的，对于 device 就是发送数据。
     fn process_rx(&mut self, mem: &AS::M) {
         trace!("{}: epoll_handler::process_rx()", self.id);
         let mut raise_irq = false;
@@ -110,6 +111,7 @@ where
                 if let Some(mut desc_chain) = iter.next() {
                     let used_len = match VsockPacket::from_rx_virtq_head(&mut desc_chain) {
                         Ok(mut pkt) => {
+                            // 调用 muxer 的 recv_pkt() 方法从 host stream 中读取数据
                             if self.muxer.recv_pkt(&mut pkt).is_ok() {
                                 pkt.hdr().len() as u32 + pkt.len()
                             } else {
@@ -132,6 +134,7 @@ where
                 }
             }
         }
+        // 向 guest 发送 irq
         if raise_irq {
             if let Err(e) = self.signal_used_queue(QUEUE_RX) {
                 error!("{}: failed to notify guest for RX queue, {:?}", self.id, e);
@@ -168,6 +171,7 @@ where
                         }
                     };
 
+                    // 把 QUEUE_TX 的数据复制到 host stream 中
                     if self.muxer.send_pkt(&pkt).is_err() {
                         iter.go_to_previous_position();
                         break;
@@ -180,6 +184,7 @@ where
                 }
             }
         }
+        // 告知 guest driver 我们已经用了 used queue 中的数据
         if have_used {
             if let Err(e) = self.signal_used_queue(QUEUE_TX) {
                 error!("{}: failed to notify guest for TX queue, {:?}", self.id, e);
@@ -260,6 +265,8 @@ where
     fn init(&mut self, ops: &mut EventOps) {
         trace!("{}: VsockEpollHandler::init()", self.id);
 
+        // TODO: 什么情况下，QUEUE_RX 的 eventfd 会被触发？理论上 QUEUE_RX
+        // 只有 guest 侧需要被通知吧？
         let events = Events::with_data(
             self.config.queues[QUEUE_RX].eventfd.as_ref(),
             defs::RXQ_EVENT,

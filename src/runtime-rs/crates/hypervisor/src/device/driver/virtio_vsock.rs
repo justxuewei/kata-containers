@@ -39,6 +39,7 @@ pub struct HybridVsockDevice {
 }
 
 impl HybridVsockDevice {
+    // 纯构建了一堆结构体
     pub fn new(device_id: &String, config: &HybridVsockConfig) -> Self {
         Self {
             id: format!("vsock-{}", device_id),

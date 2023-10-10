@@ -4,6 +4,14 @@
 /// This module implements backends for vsock - the host side vsock endpoint,
 /// which can translate vsock stream into host's protocol, eg. AF_UNIX, AF_INET
 /// or even the protocol created by us.
+/// 
+/// 我理解，backend 是 host 端的 endpoint，
+/// (host side peer) <---backend---> (dragonball) <---vsock---> (guest peer)
+/// - 如果 backend 是 unix stream，那么 host side peer 就通过
+///   open(uds_path) 发送/接收 vsock 数据。
+/// - 如果 backend 是 tcp，那么 host side peer 就通过 TCP 发送/接收 vsock
+///   数据。
+/// - 如果是 inner，应该是 process 内部通讯规则（通过 channel() 发送）。
 use std::any::Any;
 use std::io::{Read, Write};
 use std::os::unix::io::{AsRawFd, RawFd};
@@ -36,6 +44,11 @@ pub enum VsockBackendType {
 }
 
 /// The generic abstract of Vsock Backend, looks like socket's API.
+/// 实现 VsockBackend 的结构体是
+/// - VsockInnerBackend
+/// - VsockTcpBackend
+/// - VsockUnixStreamBackend
+/// 
 pub trait VsockBackend: AsRawFd + Send {
     /// Accept a host-initiated connection.
     fn accept(&mut self) -> std::io::Result<Box<dyn VsockStream>>;

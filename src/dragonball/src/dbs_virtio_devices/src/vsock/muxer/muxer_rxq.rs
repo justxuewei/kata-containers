@@ -26,6 +26,8 @@ use super::defs;
 use super::muxer_impl::{ConnMapKey, MuxerRx};
 
 /// The muxer RX queue.
+/// 1. 这个是用来从哪里 fetch 的？
+/// 2. 为什么建立连接要通过队列的方式传递，那这个队列是谁 put 谁 fetch？
 #[derive(Eq, PartialEq)]
 pub struct MuxerRxQ {
     /// The RX queue data.
@@ -44,14 +46,21 @@ impl MuxerRxQ {
     ///       many connections that have pending RX data. In that case, the
     ///       muxer will first drain this queue, and then try again to build a
     ///       synchronized one.
+    /// 将 conn_map 遍历并将其放入到 MuxerRxQ 中
+    /// - conn.has_pending_rx() 返回 false 的不加入队列；
+    /// - MuxerRxQ 已经超过 256 的，多出来的 conn 不处理了，并且把 synced
+    ///   为 false
     pub fn from_conn_map(conn_map: &HashMap<ConnMapKey, VsockConnection>) -> Self {
         let mut q = VecDeque::new();
         let mut synced = true;
 
+        // 把 conn_map 中已有的数据遍历一遍
         for (key, conn) in conn_map.iter() {
+            // 只有 conn 的 has_pending_rx() 设置为 true 的时候才会加入 MuxerRxQ
             if !conn.has_pending_rx() {
                 continue;
             }
+            // 超过 256 其他的 conn 会被忽略，且 sync 会被设置为 false
             if q.len() >= Self::SIZE {
                 synced = false;
                 break;

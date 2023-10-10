@@ -39,6 +39,8 @@ impl VsockStream for UnixStream {
 }
 
 /// The backend implementation that using Unix Stream.
+/// 这个是 xxx/kata.hvsock
+/// type -> UnixStream
 pub struct VsockUnixStreamBackend {
     /// The Unix socket, through which host-initiated connections are accepted.
     pub(crate) host_sock: UnixListener,

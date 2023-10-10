@@ -102,7 +102,11 @@ impl VirtSandbox {
     ) -> Result<Vec<ResourceConfig>> {
         let mut resource_configs = vec![];
 
-        // Prepare VM hybrid vsock device config and add the hybrid vsock device first.
+        // Prepare VM hybrid vsock device config and add the hybrid vsock
+        // device first.
+        // 启动 virtsandbox 就默认启动一个 hybrid vsock
+        // guest_cid -> 3
+        // uds_path -> xxx/kata.hvsock
         info!(sl!(), "prepare hybrid vsock resource for sandbox.");
         let vm_hvsock = ResourceConfig::HybridVsock(HybridVsockConfig {
             guest_cid: DEFAULT_GUEST_VSOCK_CID,

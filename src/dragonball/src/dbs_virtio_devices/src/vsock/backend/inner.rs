@@ -379,6 +379,8 @@ impl VsockInnerBackend {
         let (conn_sender, pending_conns) = channel();
         // use `EFD_SEMAPHORE` mode to make EventFd as a write counter for
         // pending_conns channel.
+        // 为什么凭空设置了一个 eventfd？
+        // 这个 eventfd 是要通知谁的？
         let backend_event = Arc::new(EventFd::new(EFD_NONBLOCK | EFD_SEMAPHORE)?);
 
         Ok(VsockInnerBackend {

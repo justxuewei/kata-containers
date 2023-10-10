@@ -158,20 +158,27 @@ impl VsockChannel for VsockConnection {
     ///    fill in the packet;
     /// - `Err(VsockError::PktBufMissing)`: the packet would've been filled in
     ///    with data, but it is missing the data buffer.
+    /// 初始化了 pkt 以及根据 pending_rx 修改 pkt 的操作（op），同时会把 op
+    /// 对应的 pending_rx 位置空。
+    /// 如果 Rw 是 1，那么会从 host stream 中读取数据。
     fn recv_pkt(&mut self, pkt: &mut VsockPacket) -> VsockResult<()> {
         // Perform some generic initialization that is the same for any packet
         // operation (e.g. source, destination, credit, etc).
+        // header 置 0 并设置一些基础 header 信息 
         self.init_pkt(pkt);
 
         // If forceful termination is pending, there's no point in checking for
         // anything else. It's dead, Jim.
+        // 如果 pending_rx 中的 PendingRx::Rst 置 1，则说明这个连接寄了。
         if self.pending_rx.remove(PendingRx::Rst) {
+            // pkt 的 op 设置为 RESET
             pkt.set_op(uapi::VSOCK_OP_RST);
             return Ok(());
         }
 
         // Next up: if we're due a connection confirmation, that's all we need
         // to know to fill in this packet.
+        // 这个含义是 peer 返回了 PendingRx::Response，表明连接可以被建立了。
         if self.pending_rx.remove(PendingRx::Response) {
             self.state = ConnState::Established;
             pkt.set_op(uapi::VSOCK_OP_RESPONSE);
@@ -180,6 +187,10 @@ impl VsockChannel for VsockConnection {
 
         // Same thing goes for locally-initiated connections that need to yield
         // a connection request.
+        // 如果 pendding_rx 有 Request，那么会把 op 设置为 REQUEST，更新
+        // expiry 字段为 now + 2000ms。
+        // 我猜测如果是 host 侧（hypervisor）主动建立连接的时候，会主动发一
+        // 个 Request 包。
         if self.pending_rx.remove(PendingRx::Request) {
             self.expiry =
                 Some(Instant::now() + Duration::from_millis(defs::CONN_REQUEST_TIMEOUT_MS));
@@ -187,6 +198,7 @@ impl VsockChannel for VsockConnection {
             return Ok(());
         }
 
+        // TODO: 
         if self.pending_rx.remove(PendingRx::Rw) {
             // We're due to produce a data packet, by reading the data from the
             // host-side backend.
@@ -206,6 +218,8 @@ impl VsockChannel for VsockConnection {
 
             // Oh wait, before we start bringing in the big data, can our peer
             // handle receiving so much bytey goodness?
+            // credit from peer 的作用大概是 peer 告诉目前能接受的最大数据
+            // size 是多少？如果 credit == 0 那么就需要先让 peer 更新。
             if self.need_credit_update_from_peer() {
                 self.last_fwd_cnt_to_peer = self.fwd_cnt;
                 pkt.set_op(uapi::VSOCK_OP_CREDIT_REQUEST);
@@ -218,7 +232,10 @@ impl VsockChannel for VsockConnection {
             // RX buffer size and the peer available buffer space.
             let max_len = std::cmp::min(buf.len(), self.peer_avail_credit());
 
-            // Read data from the stream straight to the RX buffer, for maximum throughput.
+            // Read data from the stream straight to the RX buffer, for
+            // maximum throughput.
+            // 把 LOCAL UNIX STREAM 的数据 copy 到 pkt 的 buffer 内部，长度
+            // 为 max_len。
             match self.stream.read(&mut buf[..max_len]) {
                 Ok(read_cnt) => {
                     if read_cnt == 0 {
@@ -297,6 +314,8 @@ impl VsockChannel for VsockConnection {
             // to forward some data to the host stream. Also works for a
             // connection that has begun shutting down, but the peer still has
             // some data to send.
+            // 状态是 Established 或者 PeerClosed 且 pkt 的数据不为空
+            // 那就把数据复制到 host stream 中
             ConnState::Established | ConnState::PeerClosed(_, false)
                 if pkt.op() == uapi::VSOCK_OP_RW =>
             {
@@ -311,6 +330,7 @@ impl VsockChannel for VsockConnection {
                 // Unwrapping here is safe, since we just checked `pkt.buf()`
                 // above.
                 let buf_slice = &pkt.buf().unwrap()[..(pkt.len() as usize)];
+                // 复制数据到 host stream 中
                 if let Err(err) = self.send_bytes(buf_slice) {
                     // If we can't write to the host stream, that's an
                     // unrecoverable error, so we'll terminate this connection.
@@ -526,6 +546,8 @@ impl VsockConnection {
         local_port: u32,
         peer_port: u32,
     ) -> Self {
+        // host-initiated 连接建立的时候，会给一个 PendingRx::Request，在
+        // recv_pkt() 将 pkt 的 op 设置为 VSOCK_OP_REQUEST。
         Self {
             local_cid,
             peer_cid,
@@ -600,12 +622,15 @@ impl VsockConnection {
         // there's no point in attempting a write at this point. `self.notify()`
         // will get called when EPOLLOUT arrives, and it will attempt to drain
         // the TX buffer then.
+        // 如果 tx_buf 中有数据，则直接写入到 tx_buf 中，EPOLLOUT event 被
+        // 触发之后才将 tx_buf 中的数据写入到 host stream 里。
         if !self.tx_buf.is_empty() {
             return self.tx_buf.push(buf);
         }
 
         // The TX buffer is empty, so we can try to write straight to the host
         // stream.
+        // tx_buf 无数据才写到 self.stream 中
         let written = match self.stream.write(buf) {
             Ok(cnt) => cnt,
             Err(e) => {
@@ -626,6 +651,8 @@ impl VsockConnection {
 
         // If we couldn't write the whole slice, we'll need to push the
         // remaining data to our buffer.
+        // 如果向 host stream 写入的长度比当前 pkt 的数据小，需要把额外的数
+        // 据写入到 tx_buf 中。
         if written < buf.len() {
             self.tx_buf.push(&buf[written..])?;
         }
@@ -654,6 +681,7 @@ impl VsockConnection {
     }
 
     /// Prepare a packet header for transmission to our peer.
+    /// 把 pkg 的 header 置 0
     fn init_pkt<'a>(&self, pkt: &'a mut VsockPacket) -> &'a mut VsockPacket {
         // Make sure the header is zeroed-out first. This looks sub-optimal, but
         // it is actually optimized-out in the compiled code to be faster than a
@@ -662,6 +690,7 @@ impl VsockConnection {
             *b = 0;
         }
 
+        // 设置了 src 和 dst 的 cid 和 port 等其他的一些基础 header 信息
         pkt.set_src_cid(self.local_cid)
             .set_dst_cid(self.peer_cid)
             .set_src_port(self.local_port)

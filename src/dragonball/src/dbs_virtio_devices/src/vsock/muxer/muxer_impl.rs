@@ -55,6 +55,8 @@ use super::{defs, Error, Result, VsockGenericMuxer};
 
 /// A unique identifier of a `VsockConnection` object. Connections are stored in
 /// a hash map, keyed by a `ConnMapKey` object.
+/// local_port -> host 上随机生成的一个 port
+/// peer_port -> guest vsock 的 port
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct ConnMapKey {
     local_port: u32,
@@ -62,6 +64,10 @@ pub struct ConnMapKey {
 }
 
 /// A muxer RX queue item.
+/// MuxerRxQ 包含了两类信息
+/// - ConnRx: 看起来是用来建立连接的，ConnMapKey 可以唯一的标识一个 vsock
+///   连接。
+/// - RstPkt: RESET 包，看起来是用于关闭连接的。
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum MuxerRx {
     /// The packet must be fetched from the connection identified by
@@ -91,6 +97,8 @@ pub enum EpollListener {
     Backend(VsockBackendType),
     /// A listener interested in reading host "connect <port>" commands from a
     /// freshly connected host socket.
+    /// 这个是 kata.hvsock 接受的 stream，用于读取 connect <port>
+    /// 在建立连接后，(host app) <-> kata.hvsock <-> (guest app)
     LocalStream(Box<dyn VsockStream>),
     /// A listener interested in recvmsg from host to get the <port> and a
     /// socket/pipe fd.
@@ -98,10 +106,12 @@ pub enum EpollListener {
 }
 
 /// The vsock connection multiplexer.
+/// HyperVsock 复用器，这是一个 uds path 实现多接口的关键
 pub struct VsockMuxer {
     /// Guest CID.
     cid: u64,
     /// A hash map used to store the active connections.
+    /// 复用器的关键是设置一个 <(host_port, peer_port), vsock conn> 的 hashmap
     conn_map: HashMap<ConnMapKey, VsockConnection>,
     /// A hash map used to store epoll event listeners / handlers.
     listener_map: HashMap<RawFd, EpollListener>,
@@ -111,6 +121,11 @@ pub struct VsockMuxer {
     ///   request packet); and
     /// - in response to EPOLLIN events (e.g. data available to be read from an
     ///   AF_UNIX socket).
+    /// TODO: rxq 这个 queue 存在的意义是什么呢？
+    /// TODO: VsockMuxer::recv_pkt() 和 VsockMuxer::send_pkt() 是被谁调用的
+    /// 呢？又是在什么场景下调用？调用了之后产生了什么意义呢？
+    /// VsockMuxer::recv_pkt() 是消费者
+    /// VsockMuxer::send_pkt() 和 EPOLLIN events 是生产者
     rxq: MuxerRxQ,
     /// A queue used for terminating connections that are taking too long to
     /// shut down.
@@ -123,35 +138,46 @@ pub struct VsockMuxer {
     /// The last used host-side port.
     local_port_last: u32,
     /// backend implementations supported in muxer.
+    /// TODO: 看起来 BackendType 就这几种，有必要搞一个 HashMap 吗？
     backend_map: HashMap<VsockBackendType, Box<dyn VsockBackend>>,
     /// the backend which can accept peer-initiated connection.
+    /// TODO: peer backend 可以选哪几种？为什么还有可能是 None？
     peer_backend: Option<VsockBackendType>,
 }
 
+/// VsockChannel 表示的是 "host app <---(channel)---> muxer"
+/// - recv_pkt 是指将数据从 channel 取出数据，放到 vsock 包中；
+/// - send_pkt 是指数据从 vsock 中解包并放到 channel 中。
 impl VsockChannel for VsockMuxer {
     /// Deliver a vsock packet to the guest vsock driver.
     ///
     /// Retuns:
     /// - `Ok(())`: `pkt` has been successfully filled in; or
     /// - `Err(VsockError::NoData)`: there was no available data with which to fill in the packet.
+    /// 传进来一个 pkt，我理解整个的流程是从 MuxerRxQ 中读取一个 item，根据
+    /// item 类型加工 pkt。
     fn recv_pkt(&mut self, pkt: &mut VsockPacket) -> VsockResult<()> {
         // We'll look for instructions on how to build the RX packet in the RX
         // queue. If the queue is empty, that doesn't necessarily mean we don't
         // have any pending RX, since the queue might be out-of-sync. If that's
         // the case, we'll attempt to sync it first, and then try to pop
         // something out again.
+        // 当 rxq 是空且 synced 为 false 的时候，会重新创建 MuxerRxQ
         if self.rxq.is_empty() && !self.rxq.is_synced() {
             self.rxq = MuxerRxQ::from_conn_map(&self.conn_map);
         }
 
+        // 作为 MuxerRxQ 的消费者，这里是真正的消费逻辑
         while let Some(rx) = self.rxq.peek() {
             let res = match rx {
                 // We need to build an RST packet, going from `local_port` to
                 // `peer_port`.
+                // RstPkt: RESET
                 MuxerRx::RstPkt {
                     local_port,
                     peer_port,
                 } => {
+                    // 把 pkt 的 op 设置为 RST
                     pkt.set_op(uapi::VSOCK_OP_RST)
                         .set_src_cid(uapi::VSOCK_HOST_CID)
                         .set_dst_cid(self.cid)
@@ -162,6 +188,7 @@ impl VsockChannel for VsockMuxer {
                         .set_flags(0)
                         .set_buf_alloc(0)
                         .set_fwd_cnt(0);
+                    // 连接结束了，就可以 pop 出来了
                     self.rxq.pop().unwrap();
                     trace!(
                         "vsock: muxer.recv[rxq.len={}, type={}, op={}, sp={}, sc={}, dp={}, dc={}]: {:?}",
@@ -183,7 +210,10 @@ impl VsockChannel for VsockMuxer {
                     let mut conn_res = Err(VsockError::NoData);
                     let mut do_pop = true;
                     self.apply_conn_mutation(key, |conn| {
+                        // 调用 connection 的 recv_pkt()
                         conn_res = conn.recv_pkt(pkt);
+                        // 如何 pending_rx 在上一个 bit 被置空之后还有其他
+                        // 的状态，则不需要把这个连接从 rxq 中弹出。
                         do_pop = !conn.has_pending_rx();
                     });
                     if do_pop {
@@ -265,6 +295,9 @@ impl VsockChannel for VsockMuxer {
             return Ok(());
         }
 
+        // conn_map 没有这个连接信息
+        // 1. guest 主动建立连接，其 OP 必须是 VSOCK_OP_REQUEST；
+        // 2. 发错了，发一个 VSOCK_OP_RST
         if !self.conn_map.contains_key(&conn_key) {
             // This packet can't be routed to any active connection (based on
             // its src and dst ports). The only orphan / unroutable packets we
@@ -351,9 +384,13 @@ impl VsockGenericMuxer for VsockMuxer {
     /// add a backend for Muxer.
     fn add_backend(&mut self, backend: Box<dyn VsockBackend>, is_peer_backend: bool) -> Result<()> {
         let backend_type = backend.r#type();
+        // 每一种 backend 只能被添加一次
         if self.backend_map.contains_key(&backend_type) {
             return Err(Error::BackendRegistered(backend_type));
         }
+        // 只监听 Backend 的 fd
+        // 如果是 host 上的，Backend 的具体类型是 VsockUnixStreamBackend，
+        // 所以是当 kata.hvsock 有信息就会被监听到
         self.add_listener(
             backend.as_raw_fd(),
             EpollListener::Backend(backend_type.clone()),
@@ -446,6 +483,7 @@ impl VsockMuxer {
                 if let Some(EpollListener::LocalStream(mut stream)) = self.remove_listener(fd) {
                     Self::read_local_stream_port(&mut stream)
                         .and_then(|read_port_result| match read_port_result {
+                            // 希望与 CID:<port> 启动一个 vsock 连接
                             ReadPortResult::Connect(peer_port) => {
                                 let local_port = self.allocate_local_port();
                                 self.add_connection(
@@ -462,6 +500,7 @@ impl VsockMuxer {
                                     ),
                                 )
                             }
+                            // 这里似乎是新增一个 listener，是做什么的？
                             ReadPortResult::PassFd => self.add_listener(
                                 stream.as_raw_fd(),
                                 EpollListener::PassFdStream(stream),
@@ -524,6 +563,8 @@ impl VsockMuxer {
     }
 
     /// Parse a host "connect" command, and extract the destination vsock port.
+    /// connect <port> -> ReadPortResult::Connect()
+    /// passfd -> PassFd？这个是干什么的？
     fn read_local_stream_port(stream: &mut Box<dyn VsockStream>) -> Result<ReadPortResult> {
         let mut buf = [0u8; 32];
 
@@ -629,6 +670,7 @@ impl VsockMuxer {
         }
 
         self.add_listener(
+            // local stream 的
             conn.as_raw_fd(),
             EpollListener::Connection {
                 key,
@@ -799,12 +841,15 @@ impl VsockMuxer {
     where
         F: FnOnce(&mut VsockConnection),
     {
+        // 根据 key 拿到 VsockConnection 实例
         if let Some(conn) = self.conn_map.get_mut(&key) {
             let had_rx = conn.has_pending_rx();
             let was_expiring = conn.will_expire();
+            // 这里保存的是原先的 state
             let prev_state = conn.state();
             let backend_type = conn.stream.backend_type();
 
+            // 这个函数可能会改变 conn 的 state
             mut_fn(conn);
 
             // If this is a host-initiated connection that has just become

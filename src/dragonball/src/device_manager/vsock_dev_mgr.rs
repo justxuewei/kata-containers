@@ -226,6 +226,7 @@ impl VsockDeviceMgr {
                 .map_err(StartMicroVmError::CreateVsockDevice)?,
             );
             if let Some(uds_path) = info.config.uds_path.as_ref() {
+                // 创建 uds_path
                 let unix_backend = VsockUnixStreamBackend::new(uds_path.clone())
                     .map_err(VirtioError::VirtioVsockError)
                     .map_err(StartMicroVmError::CreateVsockDevice)?;
@@ -267,8 +268,10 @@ impl VsockDeviceMgr {
     // check the default connector is present, or build it.
     fn lazy_make_default_connector(&mut self) -> std::result::Result<(), VsockDeviceError> {
         if self.default_inner_connector.is_none() {
+            // TODO(justxuewei): VsockInnerBackend 是干什么的？
             let inner_backend =
                 VsockInnerBackend::new().map_err(VsockDeviceError::CreateInnerBackend)?;
+            // TODO(justxuewei): VsockInnerConnector 是干什么的？
             self.default_inner_connector = Some(inner_backend.get_connector());
             self.default_inner_backend = Some(inner_backend);
         }

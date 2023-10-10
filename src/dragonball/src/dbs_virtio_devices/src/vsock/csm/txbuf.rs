@@ -35,6 +35,7 @@ impl TxBuf {
     /// Either the entire source slice will be pushed to the ring-buffer, or
     /// none of it, if there isn't enough room, in which case
     /// `Err(Error::TxBufFull)` is returned.
+    /// push() 会在 buffer 长度为 0 的时候自动扩容，长度为 64KiB
     pub fn push(&mut self, src: &[u8]) -> Result<()> {
         // Error out if there's no room to push the entire slice.
         if self.len() + src.len() > Self::SIZE {
