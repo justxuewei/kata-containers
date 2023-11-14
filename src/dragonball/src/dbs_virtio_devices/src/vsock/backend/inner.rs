@@ -26,7 +26,11 @@ enum InnerStreamRole {
 /// When working with epoll, VsockInnerStream only can be used with
 /// `level-trigged` mode.
 pub struct VsockInnerStream {
+    // stream_event 和 writer 似乎是配对的，向 writer 写入数据就会通知
+    // stream_event。同时可以看到 VsockInnerStream::as_raw_fd() 也是采用
+    // stream_event 的方式，就验证了我们上面的猜测。
     stream_event: Arc<EventFd>,
+    // peer_event 和 reader 是一对
     peer_event: Arc<EventFd>,
     writer: Sender<Vec<u8>>,
     reader: Receiver<Vec<u8>>,
@@ -125,12 +129,15 @@ impl Read for VsockInnerStream {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
         let mut total_read_len = 0;
         // if read_buf is not empty, get data from read_buf first
+        // 优先读取 read_buf 中的内容
         if let Some((read_buf, buf_read_len)) = self.read_buf.as_mut() {
             let read_len = Self::read_msg_from_vec(buf, read_buf, total_read_len, *buf_read_len);
             total_read_len += read_len;
             *buf_read_len += read_len;
 
             // if read_buf is all read, consume one event
+            // 为什么读完 read_buf 的内容需要消耗一次 event 呢？而且消耗的
+            // 还是 stream_event？
             if *buf_read_len == read_buf.len() {
                 self.consume_event()?;
                 self.read_buf.take();
@@ -138,6 +145,7 @@ impl Read for VsockInnerStream {
         }
 
         // if buf is full, just return
+        // 如果 read_buf 的长度大于等于 buf 的长度，直接返回
         if total_read_len == buf.len() {
             return Ok(total_read_len);
         }
@@ -156,12 +164,14 @@ impl Read for VsockInnerStream {
                 // channel
                 Err(TryRecvError::Empty) => {
                     if total_read_len > 0 {
+                        // 读到了数据，但是没有全部读完
                         return Ok(total_read_len);
                     } else {
                         // - non-blocking mode: return `WouldBlock` directly
                         // - blocking mode: use channel's `recv`/`recv_timeout`
                         //   function to block until channel have new data again
                         if self.stream_nonblocking.load(Ordering::SeqCst) {
+                            // non-blocking 设置为 true，告知应该阻塞
                             return Err(Error::from(ErrorKind::WouldBlock));
                         } else {
                             // - no read timeout: use channel's `recv` function
@@ -170,6 +180,7 @@ impl Read for VsockInnerStream {
                             //   to block until a message comes or reach the
                             //   timeout time
                             if let Some(dur) = self.read_timeout {
+                                // 调用
                                 match self.reader.recv_timeout(dur) {
                                     Ok(msg) => {
                                         if self.recv_msg_from_channel(
@@ -317,6 +328,8 @@ impl VsockInnerConnector {
             .map(|stream| Box::new(stream) as Box<dyn VsockStream>)
     }
 
+    // internal 是 backend 持有的（muxer 算是内部）
+    // external 是 connector 持有的
     fn connect_(&self) -> Result<VsockInnerStream> {
         let (internal_sender, external_receiver) = channel();
         let (external_sender, internal_receiver) = channel();
@@ -327,6 +340,12 @@ impl VsockInnerConnector {
         let internal_nonblocking = Arc::new(AtomicBool::new(false));
         let external_nonblocking = Arc::new(AtomicBool::new(false));
 
+        // 创建 internal_stream 和 external_stream
+        // 这两个结构体的输入参数看着眼花缭乱，请仔细注意他们之间的不同之处：
+        // 1. internal_event 和 external_event 的位置不同。
+        // 2. internal_nonblocking 和 external_nonblocking 的位置不同。
+        // 3. internal_stream 只接受 internal_{sender,receiver}，external 反之。
+        // 4. 它们的 role 是不同的，一个是 Internal 一个是 External。
         let mut internal_stream = VsockInnerStream::new(
             internal_event.clone(),
             external_event.clone(),
@@ -336,7 +355,8 @@ impl VsockInnerConnector {
             external_nonblocking.clone(),
             InnerStreamRole::Internal,
         );
-        // internal stream is vsock internal used, we need non-blocking mode
+        // internal stream is vsock internal used, we need non-blocking
+        // mode
         internal_stream.set_nonblocking(true)?;
 
         // external stream is used for others, the mode can be set by them.
@@ -350,13 +370,17 @@ impl VsockInnerConnector {
             InnerStreamRole::External,
         );
 
-        // send the inner stream to connection pending list for later accept.
+        // send the inner stream to connection pending list for later
+        // accept.
+        // internal_stream 会通过 conn_sender 这个 channel 发送给
+        // pendding_conns。
         self.conn_sender.send(internal_stream).map_err(|e| {
             Error::new(
                 ErrorKind::ConnectionRefused,
                 format!("vsock inner stream sender err: {e}"),
             )
         })?;
+        // 通知 backend_event 有了新的连接进来
         self.backend_event.write(1)?;
 
         Ok(external_stream)
@@ -381,6 +405,8 @@ impl VsockInnerBackend {
         // pending_conns channel.
         // 为什么凭空设置了一个 eventfd？
         // 这个 eventfd 是要通知谁的？
+        // 现在我就明白了，为什么要用 eventfd 来通知，这样在调用
+        // pending_conns 可以直接调用 `try_recv()` 实现非阻塞调用。
         let backend_event = Arc::new(EventFd::new(EFD_NONBLOCK | EFD_SEMAPHORE)?);
 
         Ok(VsockInnerBackend {

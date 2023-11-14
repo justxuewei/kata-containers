@@ -74,7 +74,11 @@ impl<AS: GuestAddressSpace, M: VsockGenericMuxer> Vsock<AS, M> {
         epoll_mgr: EpollManager,
         muxer: M,
     ) -> Result<Self> {
+        // 正好是一个 u64 类型，表示的是 guest cid（固定值 3）
         let mut config_space = Vec::with_capacity(VSOCK_CONFIG_SPACE_SIZE);
+        // i == 0: cid >> 0
+        // i == 1: cid >> 1
+        // ...
         for i in 0..VSOCK_CONFIG_SPACE_SIZE {
             config_space.push((cid >> (8 * i as u64)) as u8);
         }
@@ -84,6 +88,8 @@ impl<AS: GuestAddressSpace, M: VsockGenericMuxer> Vsock<AS, M> {
             queue_sizes: queue_sizes.clone(),
             device_info: VirtioDeviceInfo::new(
                 VSOCK_DRIVER_NAME.to_string(),
+                // VIRTIO_F_VERSION_1: v1.0 compliant（兼容 1.0 版本）
+                // VIRTIO_F_IN_ORDER: 
                 VSOCK_AVAIL_FEATURES,
                 queue_sizes,
                 config_space,
