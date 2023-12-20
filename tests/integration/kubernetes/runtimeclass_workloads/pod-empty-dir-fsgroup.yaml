@@ -17,13 +17,9 @@ spec:
   - name: mounttest-container
     image: ${agnhost_image}
     command:
-      - /agnhost
+      - sleep
     args:
-      - mounttest
-      - --fs_type=/test-volume
-      - --new_file_0660=/test-volume/test-file
-      - --file_perm=/test-volume/test-file
-      - --file_owner=/test-volume/test-file
+      - "1"
     volumeMounts:
       - name: emptydir-volume
         mountPath: /test-volume
