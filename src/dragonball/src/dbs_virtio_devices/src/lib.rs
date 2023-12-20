@@ -353,6 +353,9 @@ pub mod tests {
     use std::mem;
     use std::sync::Arc;
 
+    use dbs_address_space::{
+        AddressSpace, AddressSpaceLayout, AddressSpaceRegion, AddressSpaceRegionType,
+    };
     use dbs_interrupt::KvmIrqManager;
     use kvm_ioctls::{Kvm, VmFd};
     use virtio_queue::{QueueSync, QueueT};
@@ -364,6 +367,10 @@ pub mod tests {
     pub const VIRTQ_DESC_F_NEXT: u16 = 0x1;
     pub const VIRTQ_DESC_F_WRITE: u16 = 0x2;
 
+    pub(crate) const GUEST_PHYS_END: u64 = (1 << 46) - 1;
+    pub(crate) const GUEST_MEM_START: u64 = 0;
+    pub(crate) const GUEST_MEM_END: u64 = GUEST_PHYS_END >> 1;
+
     pub fn create_vm_and_irq_manager() -> (Arc<VmFd>, Arc<KvmIrqManager>) {
         let kvm = Kvm::new().unwrap();
         let vmfd = Arc::new(kvm.create_vm().unwrap());
@@ -372,6 +379,16 @@ pub mod tests {
         assert!(irq_manager.initialize().is_ok());
 
         (vmfd, irq_manager)
+    }
+
+    pub fn create_address_space() -> AddressSpace {
+        let address_space_region = vec![Arc::new(AddressSpaceRegion::new(
+            AddressSpaceRegionType::DefaultMemory,
+            GuestAddress(0x0),
+            0x1000 as GuestUsize,
+        ))];
+        let layout = AddressSpaceLayout::new(GUEST_PHYS_END, GUEST_MEM_START, GUEST_MEM_END);
+        AddressSpace::from_regions(address_space_region, layout)
     }
 
     // Represents a virtio descriptor in guest memory.
